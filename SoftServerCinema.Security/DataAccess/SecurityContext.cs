@@ -10,5 +10,7 @@ namespace SoftServerCinema.Security.DataAccess
         public SecurityContext() { }
         public SecurityContext(DbContextOptions<SecurityContext> options) : base(options) { }
 
+       
     }
+
 }
