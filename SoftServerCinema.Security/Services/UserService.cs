@@ -40,6 +40,30 @@ namespace SoftServerCinema.Security.Services
 
                 return userDto;
         }
+
+
+        public async Task<bool> Login(UserLoginDTO userLoginDTO)
+        {
+            var user = await IsUserExist(userLoginDTO.Email);
+            if (!user)
+            {
+                throw new Exception("User doesn't exist");
+            }
+            var isEmailConfirmed = await IsEmailConfirmed(userLoginDTO.Email);
+            if(!isEmailConfirmed)
+            {
+                throw new Exception("Email not confirmed");
+            }
+            var passwordMatch = await CheckPasswords(userLoginDTO);
+            if (!passwordMatch)
+            {
+                throw new Exception("Password doesn't match");
+            }
+
+            //generate tokens 
+            //return tokens
+            return true;
+        }
         public async Task<bool> Create(UserRegisterDTO userRegisterDTO)
         {
             var user = await IsUserExist(userRegisterDTO.Email);
@@ -143,7 +167,16 @@ namespace SoftServerCinema.Security.Services
             var result = await _userManager.ConfirmEmailAsync(user, code);
             return result.Succeeded;
         }
+        public async Task<bool> IsEmailConfirmed(string email)
+        {
+            return (await _userManager.FindByEmailAsync(email)).EmailConfirmed;
+        }
+        public async Task<bool> CheckPasswords(UserLoginDTO userLoginDTO)
+        {
+            var user = await _userManager.FindByEmailAsync(userLoginDTO.Email);
+            return await _userManager.CheckPasswordAsync(user, userLoginDTO.Password);
+        }   
 
-       
+
     }
 }
