@@ -1,6 +1,6 @@
 ﻿using SoftServerCinema.Security.DTOs;
 using SoftServerCinema.Security.Entities;
-using SoftServerCinema.Security.Services.Authentication.cs;
+using SoftServerCinema.Security.Services.Authentication;
 
 namespace SoftServerCinema.Security.Interfaces
 {
@@ -9,12 +9,14 @@ namespace SoftServerCinema.Security.Interfaces
         Task<UserDTO> GetByIdAsync(string userId);
         Task<bool> IsUserExist(string email);
         Task<bool> Create(UserRegisterDTO userRegisterDTO);
-        Task<bool> Login(UserLoginDTO userLoginDTO);
+        Task<AuthenticatedUserResponse> Login(UserLoginDTO userLoginDTO);
 
         //email
         Task<bool> VerifyEmail(string userId, string code);
 
         //tokens
-
+        Task <AuthenticatedUserResponse> VerifyAndGenerateTokens(TokenRequest tokenRequest);
+        Task<AuthenticatedUserResponse> GenerateTokens (string email);
+       
     }
 }
