@@ -10,7 +10,8 @@ using SoftServerCinema.Security.DataAccess;
 using SoftServerCinema.Security.DTOs;
 using SoftServerCinema.Security.Entities;
 using SoftServerCinema.Security.Interfaces;
-using SoftServerCinema.Security.Services.Authentication.cs;
+using SoftServerCinema.Security.Services.Authentication;
+using SoftServerCinema.Security.ErrorFilter;
 
 
 namespace SoftServerCinema.Security.Services
@@ -20,11 +21,13 @@ namespace SoftServerCinema.Security.Services
         private readonly SecurityContext _context;
         private readonly UserManager<UserEntity> _userManager;
         private readonly RoleManager<IdentityRole<Guid>> _roleManager;
-        public UserService(SecurityContext context,RoleManager<IdentityRole<Guid>> roleManager, UserManager<UserEntity> userManager)
+        private readonly ITokenGenerator _tokenGenerator;
+        public UserService(SecurityContext context,RoleManager<IdentityRole<Guid>> roleManager, UserManager<UserEntity> userManager, ITokenGenerator tokenGenerator)
         {
             _context = context;
             _userManager = userManager;
             _roleManager = roleManager;
+            _tokenGenerator = tokenGenerator;
         }
 
         public async Task<UserDTO> GetByIdAsync(string userId)
@@ -42,34 +45,61 @@ namespace SoftServerCinema.Security.Services
         }
 
 
-        public async Task<bool> Login(UserLoginDTO userLoginDTO)
+        public async Task<AuthenticatedUserResponse> Login(UserLoginDTO userLoginDTO)
         {
             var user = await IsUserExist(userLoginDTO.Email);
             if (!user)
             {
-                throw new Exception("User doesn't exist");
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status404NotFound,
+                    Title = "User doesn't exist",
+                    Detail = "User doesn't exist while creating user"
+                };
             }
             var isEmailConfirmed = await IsEmailConfirmed(userLoginDTO.Email);
-            if(!isEmailConfirmed)
+            if (!isEmailConfirmed)
             {
-                throw new Exception("Email not confirmed");
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Title = "Email is not confirmed",
+                    Detail = "User email is not confirmed"
+                };
+
             }
             var passwordMatch = await CheckPasswords(userLoginDTO);
             if (!passwordMatch)
             {
-                throw new Exception("Password doesn't match");
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Title = "Wrong password",
+                    Detail = "Password doesn't match"
+                };
             }
+            var tokens = await GenerateTokens(userLoginDTO.Email);
+            return tokens;
 
-            //generate tokens 
-            //return tokens
-            return true;
         }
+
+        public async Task<AuthenticatedUserResponse> GenerateTokens(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            return await _tokenGenerator.GenerateTokens(user);
+        }
+
         public async Task<bool> Create(UserRegisterDTO userRegisterDTO)
         {
             var user = await IsUserExist(userRegisterDTO.Email);
             if(user)
             {
-                throw new Exception("User already exist");
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Title = "Invalid email",
+                    Detail = "Email is already used! Try different one"
+                };
             }
             var createdResult = await CreateUser(userRegisterDTO);
             if (createdResult)
@@ -84,13 +114,23 @@ namespace SoftServerCinema.Security.Services
                 else
                 {
                     await _userManager.DeleteAsync(createdUser);
-                    throw new Exception("Email not sent");
+                    throw new ApiException()
+                    {
+                        StatusCode = StatusCodes.Status500InternalServerError,
+                        Title = "Can't send email",
+                        Detail = "Error occured while sending email. Deleting user"
+                    };
                 }
            
             }
-           
-                throw new Exception("User not created");
-           
+
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Can't creating user",
+                Detail = "Error occured while creating user on server"
+            };
+
 
         }
         private async Task<bool> CreateUser(UserRegisterDTO userRegisterDTO)
@@ -153,7 +193,12 @@ namespace SoftServerCinema.Security.Services
                 var role = await _userManager.GetRolesAsync(user);
                 return role.First();
             }
-            throw new Exception("Role not added");
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Can't add role to user",
+                Detail = "Error occured while adding role to user"
+            };
         }
        
         public async Task<bool> IsUserExist(string email)
@@ -175,8 +220,11 @@ namespace SoftServerCinema.Security.Services
         {
             var user = await _userManager.FindByEmailAsync(userLoginDTO.Email);
             return await _userManager.CheckPasswordAsync(user, userLoginDTO.Password);
-        }   
+        }
 
-
+        public async Task<AuthenticatedUserResponse> VerifyAndGenerateTokens(TokenRequest tokenRequest)
+        {
+            return await _tokenGenerator.RefreshAccessToken(tokenRequest);
+        }
     }
 }

@@ -4,34 +4,47 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System;
+
 using System.Text;
 using SoftServerCinema.Security.Interfaces;
 using SoftServerCinema.Security.Services;
 using SoftServerCinema.Security.Entities;
 using SoftServerCinema.Security.Validators;
 using FluentValidation;
-using FluentValidation.AspNetCore;
+
+using SoftServerCinema.Security.Services.Authentication;
+using SoftServerCinema.Security.ErrorFilter;
 
 var builder = WebApplication.CreateBuilder(args);
+
+
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add(typeof(GlobalExceptionFilter));
+});
+
+
+builder.Services.AddValidatorsFromAssemblyContaining<UserRegisterDTOValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<UserLoginDTOValidator>();
+
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+
+
 builder.Services.AddDbContext<SecurityContext>(options =>
 {
     options.UseMySQL(builder.Configuration.GetConnectionString("db"));
 });
-// Add services to the container.
+
+
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddTransient<ITokenGenerator, TokenGenerator>();
+
 builder.Services.AddIdentity<UserEntity, IdentityRole<Guid>>()
     .AddEntityFrameworkStores<SecurityContext>()
     .AddDefaultTokenProviders();
-
-builder.Services.AddControllers();
-builder.Services.AddValidatorsFromAssemblyContaining<UserRegisterDTOValidator>();
-
-builder.Services.AddScoped<IUserService,UserService>(); 
-
-builder.Services.AddSwaggerGen();
-
-builder.Services.AddEndpointsApiExplorer();
-
 
 
 builder.Services.AddCors(options =>
@@ -44,6 +57,40 @@ builder.Services.AddCors(options =>
         .AllowAnyHeader();
     });
 });
+
+var key = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(builder.Configuration["JWT:SecretKey"]));
+var tokenValidationParameters = new TokenValidationParameters
+{
+    ValidateIssuer = true,
+    ValidIssuer = builder.Configuration["JWT:Issuer"],
+
+    ValidateAudience = false,
+    ValidAudience = builder.Configuration["JWT:Audience"],
+
+    ValidateLifetime = true,
+
+    ValidateIssuerSigningKey = true,
+    ClockSkew = TimeSpan.Zero,
+    IssuerSigningKey = key
+
+};
+
+var authConfig = new AuthSettings();
+builder.Configuration.GetSection("JWT").Bind(authConfig);
+builder.Services.AddSingleton(authConfig);
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+
+})
+    .AddJwtBearer(options =>
+    {   options.RequireHttpsMetadata = false;
+        options.SaveToken = true;
+        options.TokenValidationParameters = tokenValidationParameters;
+    });
 
 var app = builder.Build();
 
@@ -59,6 +106,7 @@ if(app.Environment.IsDevelopment())
 app.UseRouting();
 app.UseCors("AllowMyOrigins");
 app.UseHttpsRedirection();
+
 
 
 app.UseAuthorization();

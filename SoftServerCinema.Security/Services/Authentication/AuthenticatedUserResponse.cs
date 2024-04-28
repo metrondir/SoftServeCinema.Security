@@ -1,4 +1,4 @@
-﻿namespace SoftServerCinema.Security.Services.Authentication.cs
+﻿namespace SoftServerCinema.Security.Services.Authentication
 {
     public class AuthenticatedUserResponse
     {
