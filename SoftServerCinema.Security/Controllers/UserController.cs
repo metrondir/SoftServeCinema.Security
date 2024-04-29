@@ -75,7 +75,7 @@ namespace SoftServerCinema.Security.Controllers
                 throw new ApiException()
                 {
                     StatusCode = StatusCodes.Status500InternalServerError,
-                    Title = "User creation",
+                    Title = "User creation failed",
                     Detail = "Error occured while creating user on server"
                 };
         }
@@ -90,7 +90,7 @@ namespace SoftServerCinema.Security.Controllers
                 throw new ApiException()
                 {
                     StatusCode = StatusCodes.Status500InternalServerError,
-                    Title = "Token generation",
+                    Title = "Token generation failed",
                     Detail = "Error occured while generating tokens for user"
                 };
             return Ok(token);

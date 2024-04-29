@@ -16,7 +16,7 @@ namespace SoftServerCinema.Security.Interfaces
 
         //tokens
         Task <AuthenticatedUserResponse> VerifyAndGenerateTokens(TokenRequest tokenRequest);
-        Task<AuthenticatedUserResponse> GenerateTokens (string email);
+        
        
     }
 }

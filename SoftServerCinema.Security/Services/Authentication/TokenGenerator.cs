@@ -10,6 +10,7 @@ using System.Text;
 
 using Microsoft.EntityFrameworkCore;
 using SoftServerCinema.Security.DTOs;
+using SoftServerCinema.Security.ErrorFilter;
 
 namespace SoftServerCinema.Security.Services.Authentication
 {
@@ -64,7 +65,12 @@ namespace SoftServerCinema.Security.Services.Authentication
            var result = await _userManager.UpdateAsync(user);
             if(!result.Succeeded)
             {
-                throw new Exception("Cannot update user");
+               throw new ApiException()
+               {
+                   StatusCode = StatusCodes.Status500InternalServerError,
+                   Title = "Can't create refresh token",
+                   Detail = "Error occured while creating refresh token"
+               };
             }
             return new AuthenticatedUserResponse
             {
@@ -90,7 +96,12 @@ namespace SoftServerCinema.Security.Services.Authentication
             var result = await _userManager.UpdateAsync(user);
             if (!result.Succeeded)
             {
-                throw new Exception("Unable to create refresh token");
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError,
+                    Title = "Can't create refresh token",
+                    Detail = "Error occured while creating refresh token"
+                };
             }
             return new AuthenticatedUserResponse
             {

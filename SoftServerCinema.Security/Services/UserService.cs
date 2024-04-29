@@ -47,8 +47,8 @@ namespace SoftServerCinema.Security.Services
 
         public async Task<AuthenticatedUserResponse> Login(UserLoginDTO userLoginDTO)
         {
-            var user = await IsUserExist(userLoginDTO.Email);
-            if (!user)
+            var user = await _userManager.FindByEmailAsync(userLoginDTO.Email);
+            if (user == null)
             {
                 throw new ApiException()
                 {
@@ -78,16 +78,12 @@ namespace SoftServerCinema.Security.Services
                     Detail = "Password doesn't match"
                 };
             }
-            var tokens = await GenerateTokens(userLoginDTO.Email);
+            var tokens = await _tokenGenerator.GenerateTokens(user);
             return tokens;
 
         }
 
-        public async Task<AuthenticatedUserResponse> GenerateTokens(string email)
-        {
-            var user = await _userManager.FindByEmailAsync(email);
-            return await _tokenGenerator.GenerateTokens(user);
-        }
+      
 
         public async Task<bool> Create(UserRegisterDTO userRegisterDTO)
         {
@@ -97,7 +93,7 @@ namespace SoftServerCinema.Security.Services
                 throw new ApiException()
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Title = "Invalid email",
+                    Title = "Email is already used!",
                     Detail = "Email is already used! Try different one"
                 };
             }
