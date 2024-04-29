@@ -1,9 +1,9 @@
 ﻿using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
-namespace SoftServerCinema.Security.Services.Authentication.cs
+namespace SoftServerCinema.Security.Services.Authentication
 {
-    public class AuthSetting
+    public class AuthSettings
     {
         public string SecretKey { get; set; }
         public double AccessTokenExpirationMinutes { get; set; }
