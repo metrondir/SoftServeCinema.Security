@@ -26,7 +26,8 @@ builder.Services.AddControllers(options =>
 
 builder.Services.AddValidatorsFromAssemblyContaining<UserRegisterDTOValidator>();
 builder.Services.AddValidatorsFromAssemblyContaining<UserLoginDTOValidator>();
-
+builder.Services.AddValidatorsFromAssemblyContaining<EmailDTOValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<ResetCodeDTOValidator>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

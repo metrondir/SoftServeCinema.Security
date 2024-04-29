@@ -11,12 +11,15 @@ namespace SoftServerCinema.Security.Interfaces
         Task<bool> Create(UserRegisterDTO userRegisterDTO);
         Task<AuthenticatedUserResponse> Login(UserLoginDTO userLoginDTO);
 
+        Task<bool> Delete(string userId);
         //email
         Task<bool> VerifyEmail(string userId, string code);
 
         //tokens
         Task <AuthenticatedUserResponse> VerifyAndGenerateTokens(TokenRequest tokenRequest);
         
+        Task<bool> SendResetCode(string email);
+        Task<bool> VerifyResetCode(string email,string code,string newPassword);
        
     }
 }

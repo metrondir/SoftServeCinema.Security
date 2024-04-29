@@ -222,5 +222,74 @@ namespace SoftServerCinema.Security.Services
         {
             return await _tokenGenerator.RefreshAccessToken(tokenRequest);
         }
+
+        public async Task<bool> SendResetCode(string emailDto)
+        {
+            var user = await _userManager.FindByEmailAsync(emailDto);
+            var resetCode = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var callBackUrl = "https://localhost:7262/"+ "reset-password?email=" + user.Email + "&code=" + resetCode;
+            try
+            {
+                var email = new MimeMessage();
+                email.From.Add(MailboxAddress.Parse("kinosvet.cinema.ltd@gmail.com"));
+                email.To.Add(MailboxAddress.Parse(user.Email));
+                email.Subject = "Password Reset";
+                email.Body = new TextPart(MimeKit.Text.TextFormat.Html)
+                {
+                    Text = $"<a href='{callBackUrl}'>Click here to reset your password</a>"
+                };
+                using var smtp = new SmtpClient();
+                await smtp.ConnectAsync("smtp.gmail.com", 587, SecureSocketOptions.StartTls);
+                await smtp.AuthenticateAsync("kinosvet.cinema.ltd@gmail.com", "xmjl pygd kosx woyh");
+                await smtp.SendAsync(email);
+                await smtp.DisconnectAsync(true);
+                return true;
+            }
+            catch(Exception)
+            {
+                return false;
+            }
+        }
+
+        public async Task<bool> VerifyResetCode(string email, string code, string newPassword)
+        {
+            code = code.Replace(" ", "+");
+            var user = await _userManager.FindByEmailAsync(email);
+            var result = await _userManager.ResetPasswordAsync(user, code, newPassword);
+            if(result.Succeeded)
+                return true;
+           throw new ApiException()
+           {
+               StatusCode = StatusCodes.Status500InternalServerError,
+               Title = "Can't reset password",
+               Detail = "Error occured while resetting password"
+           };
+        }
+         public async Task<bool> Delete(string userId)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if(user == null)
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status404NotFound,
+                    Title = "User doesn't exist",
+                    Detail = "User doesn't exist while deleting user"
+                };
+            }
+            var result = await _userManager.DeleteAsync(user);
+            if (result.Succeeded)
+                return true;
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Can't delete user",
+                Detail = "Error occured while deleting user"
+            };
+        }
+
+       
     }
+        
+
 }

@@ -95,7 +95,6 @@ namespace SoftServerCinema.Security.Controllers
                 };
             return Ok(token);
         }
-     
 
 
         [AllowAnonymous]
@@ -112,6 +111,8 @@ namespace SoftServerCinema.Security.Controllers
                 };
             return Ok();
         }
+
+
         [AllowAnonymous]
         [HttpGet("verify-email")]
         public async Task<IActionResult> EmailConfirmation([FromQuery] string userId, [FromQuery] string code)
@@ -139,6 +140,50 @@ namespace SoftServerCinema.Security.Controllers
                     Detail = "Error occured while generating new tokens"
                 };
             return Ok(token);
+        }
+
+        [AllowAnonymous]
+        [HttpPost("reset")]
+        public async Task<IActionResult> ResetCodeEmail([FromBody] EmailDTO emailDTO)
+        {
+           if(!await _userService.IsUserExist(emailDTO.To))
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status404NotFound,
+                    Title = "Email is not used",
+                    Detail = "Email is not used, user with this email doesn't exist"
+                };
+           if(await _userService.SendResetCode(emailDTO.To))
+                return Ok();
+            else
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError,
+                    Title = "Sending reset code",
+                    Detail = "Error occured while sending reset code"
+                };
+        }
+
+        [AllowAnonymous]
+        [HttpPost("verify-reset-code")]
+
+        public async Task<IActionResult> VerifyResetCode([FromBody] ResetCodeDTO resetCodeDTO)
+        {
+           if(!await _userService.IsUserExist(resetCodeDTO.Email))
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status404NotFound,
+                    Title = "Email is not used",
+                    Detail = "Email is not used, user with this email doesn't exist"
+                };
+           if(await _userService.VerifyResetCode(resetCodeDTO.Email, resetCodeDTO.ResetToken, resetCodeDTO.NewPassword))
+                return Ok();
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Reset code verification failed",
+                Detail = "Error occured while verifying reset code"
+            };
         }
     }
 }
