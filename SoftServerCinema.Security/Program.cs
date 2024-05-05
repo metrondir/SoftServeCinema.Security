@@ -8,12 +8,14 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using SoftServerCinema.Security.Interfaces;
 using SoftServerCinema.Security.Services;
-using SoftServerCinema.Security.Entities;
 using SoftServerCinema.Security.Validators;
+using SoftServerCinema.Security.Entities;
 using FluentValidation;
 
 using SoftServerCinema.Security.Services.Authentication;
 using SoftServerCinema.Security.ErrorFilter;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,7 +28,8 @@ builder.Services.AddControllers(options =>
 
 builder.Services.AddValidatorsFromAssemblyContaining<UserRegisterDTOValidator>();
 builder.Services.AddValidatorsFromAssemblyContaining<UserLoginDTOValidator>();
-
+builder.Services.AddValidatorsFromAssemblyContaining<EmailDTOValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<ResetCodeDTOValidator>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -64,7 +67,7 @@ var tokenValidationParameters = new TokenValidationParameters
     ValidateIssuer = true,
     ValidIssuer = builder.Configuration["JWT:Issuer"],
 
-    ValidateAudience = false,
+    ValidateAudience = true,
     ValidAudience = builder.Configuration["JWT:Audience"],
 
     ValidateLifetime = true,
@@ -81,11 +84,16 @@ builder.Services.AddSingleton(authConfig);
 
 builder.Services.AddAuthentication(options =>
 {
-    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-
 })
+    .AddCookie()
+    .AddGoogle(GoogleDefaults.AuthenticationScheme, options =>
+    {
+        options.ClientId = builder.Configuration.GetSection("Autorization:ClientId").Value;
+        options.ClientSecret = builder.Configuration.GetSection("Autorization:ClientSecret").Value;
+    })
     .AddJwtBearer(options =>
     {   options.RequireHttpsMetadata = false;
         options.SaveToken = true;
@@ -95,22 +103,23 @@ builder.Services.AddAuthentication(options =>
 var app = builder.Build();
 
 
-// Configure the HTTP request pipeline.
-// fluent validators
+
 if(app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+app.UseStaticFiles();
+
 
 app.UseRouting();
 app.UseCors("AllowMyOrigins");
 app.UseHttpsRedirection();
 
 
-
-app.UseAuthorization();
 app.UseAuthentication();
+app.UseAuthorization();
+
 
 app.MapControllers();
 
