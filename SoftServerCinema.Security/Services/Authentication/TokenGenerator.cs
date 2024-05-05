@@ -126,4 +126,5 @@ namespace SoftServerCinema.Security.Services.Authentication
             return principal;
         }
     }
+    
 }

@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using MimeKit;
 using MimeKit.Text;
 using MailKit.Net.Smtp;
+using Microsoft.AspNetCore.Authentication;
 
 using SoftServerCinema.Security.DataAccess;
 using SoftServerCinema.Security.DTOs;
@@ -12,7 +13,14 @@ using SoftServerCinema.Security.Entities;
 using SoftServerCinema.Security.Interfaces;
 using SoftServerCinema.Security.Services.Authentication;
 using SoftServerCinema.Security.ErrorFilter;
+using Google.Apis.Auth;
+using Google.Apis.Auth.OAuth2.Flows;
+using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
+
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 namespace SoftServerCinema.Security.Services
 {
@@ -45,7 +53,7 @@ namespace SoftServerCinema.Security.Services
         }
 
 
-        public async Task<AuthenticatedUserResponse> Login(UserLoginDTO userLoginDTO)
+        public async Task<UserDTOWithTokens> Login(UserLoginDTO userLoginDTO)
         {
             var user = await _userManager.FindByEmailAsync(userLoginDTO.Email);
             if (user == null)
@@ -78,11 +86,53 @@ namespace SoftServerCinema.Security.Services
                     Detail = "Password doesn't match"
                 };
             }
-            var tokens = await _tokenGenerator.GenerateTokens(user);
-            return tokens;
+           
+            var token = await _tokenGenerator.GenerateTokens(user);
+            if(token == null)
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError,
+                    Title = "Can't generate tokens",
+                    Detail = "Error occured while generating tokens"
+                };
+            }
+            var userWithTokens = new UserDTOWithTokens()
+            {
+                Id = user.Id,
+                FirstName = user.UserName,
+                LastName = user.UserName,
+                Email = user.Email,
+                Role = (await _userManager.GetRolesAsync(user)).FirstOrDefault(),
+                AccessToken = token.AccessToken,
+                RefreshToken = token.RefreshToken
+            };
+            return userWithTokens;
 
         }
-
+        public async Task<bool> LogOut(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null)
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status404NotFound,
+                    Title = "User doesn't exist",
+                    Detail = "User doesn't exist while logging out"
+                };
+            }
+            user.RefreshToken = null;
+            var result = await _userManager.UpdateAsync(user);
+            if (result.Succeeded)
+                return true;
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Can't log out",
+                Detail = "Error occured while logging out"
+            };
+        }
       
 
         public async Task<bool> Create(UserRegisterDTO userRegisterDTO)
@@ -101,7 +151,7 @@ namespace SoftServerCinema.Security.Services
             if (createdResult)
             {
                 var createdUser = await _userManager.FindByEmailAsync(userRegisterDTO.Email);
-                var userRole = await AddRoleToUser(createdUser);
+                 await AddRoleToUser(createdUser);
                 var isEmailSent = await SendEmail(createdUser);
                 if (isEmailSent)
                 {
@@ -135,10 +185,17 @@ namespace SoftServerCinema.Security.Services
             {
                 Email = userRegisterDTO.Email,
                 UserName = userRegisterDTO.Email,
-
-
             };
             var result = await _userManager.CreateAsync(user, userRegisterDTO.Password);
+            if(result.Succeeded == false)
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Title = string.Join(",", result.Errors.Select(error => error.Description)),
+                    Detail = "Error occured while creating user"
+                };
+            }
             return result.Succeeded;
         }
 
@@ -226,8 +283,25 @@ namespace SoftServerCinema.Security.Services
         public async Task<bool> SendResetCode(string emailDto)
         {
             var user = await _userManager.FindByEmailAsync(emailDto);
+            if (user == null)
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status404NotFound,
+                    Title = "User doesn't exist",
+                    Detail = "User doesn't exist while verifying reset code"
+                };
+
+            if (user.EmailConfirmed == false)
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Title = "Email is not confirmed",
+                    Detail = "User email is not confirmed"
+                };
+            }
             var resetCode = await _userManager.GeneratePasswordResetTokenAsync(user);
-            var callBackUrl = "https://localhost:7262/"+ "reset-password?email=" + user.Email + "&code=" + resetCode;
+            var callBackUrl = "https://localhost:7262/User/"+ "ResetPassword?email=" + user.Email + "&code=" + resetCode;
             try
             {
                 var email = new MimeMessage();
@@ -251,17 +325,19 @@ namespace SoftServerCinema.Security.Services
             }
         }
 
-        public async Task<bool> VerifyResetCode(string email, string code, string newPassword)
+        public async Task<bool> VerifyResetCode(ResetCodeDTO resetCodeDTO)
         {
-            code = code.Replace(" ", "+");
-            var user = await _userManager.FindByEmailAsync(email);
-            var result = await _userManager.ResetPasswordAsync(user, code, newPassword);
+            var user = await _userManager.FindByEmailAsync(resetCodeDTO.Email);
+            
+            resetCodeDTO.ResetToken = resetCodeDTO.ResetToken.Replace(" ", "+");
+            
+            var result = await _userManager.ResetPasswordAsync(user, resetCodeDTO.ResetToken, resetCodeDTO.NewPassword);
             if(result.Succeeded)
                 return true;
            throw new ApiException()
            {
-               StatusCode = StatusCodes.Status500InternalServerError,
-               Title = "Can't reset password",
+               StatusCode = StatusCodes.Status400BadRequest,
+               Title = string.Join(",", result.Errors.Select(error => error.Description)),
                Detail = "Error occured while resetting password"
            };
         }
@@ -287,9 +363,95 @@ namespace SoftServerCinema.Security.Services
                 Detail = "Error occured while deleting user"
             };
         }
+        public async Task<UserDTOWithTokens> SignInGoogle(UserRegisterDTO userRegister)
+        {
+            if (await IsUserExist(userRegister.Email))
+            {
+                var existedUser = await _userManager.FindByEmailAsync(userRegister.Email);
+                var tokenExistedUser = await _tokenGenerator.GenerateTokens(existedUser);
+                var existedUserWithTokens = new UserDTOWithTokens()
+                {
+                    Id = existedUser.Id,
+                    FirstName = existedUser.UserName,
+                    LastName = existedUser.UserName,
+                    Email = existedUser.Email,
+                    Role = (await _userManager.GetRolesAsync(existedUser)).FirstOrDefault(),
+                    AccessToken = tokenExistedUser.AccessToken,
+                    RefreshToken = tokenExistedUser.RefreshToken
+                };
+                return existedUserWithTokens;
+            }
+            var user = new UserEntity()
+            {
+                Email = userRegister.Email,
+                UserName = userRegister.Email,
+            };
+            var result = await _userManager.CreateAsync(user);
+            if (result.Succeeded == false)
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError,
+                    Title = "Can't create user",
+                    Detail = "Error occured while creating user"
+                };
+            }
+            var createdUser = await _userManager.FindByEmailAsync(userRegister.Email);
+            await AddRoleToUser(createdUser);
+            await _userManager.ConfirmEmailAsync(createdUser, await _userManager.GenerateEmailConfirmationTokenAsync(createdUser));
 
-       
+            var token = await _tokenGenerator.GenerateTokens(createdUser);
+            if (token == null)
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError,
+                    Title = "Can't generate tokens",
+                    Detail = "Error occured while generating tokens"
+                };
+            }
+            var userWithTokens = new UserDTOWithTokens()
+            {
+                Id = createdUser.Id,
+                FirstName = createdUser.UserName,
+                LastName = createdUser.UserName,
+                Email = createdUser.Email,
+                Role = (await _userManager.GetRolesAsync(createdUser)).FirstOrDefault(),
+                AccessToken = token.AccessToken,
+                RefreshToken = token.RefreshToken
+            };
+            
+            return userWithTokens;
+
+        }
+        public async Task<bool> ChangeRole(ChangeRoleDTO changeRoleDTO)
+        {
+            var user = await _userManager.FindByEmailAsync(changeRoleDTO.Email);
+            if (string.IsNullOrEmpty(user.Email))
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status404NotFound,
+                    Title = "User doesn't exist",
+                    Detail = "User doesn't exist while changing role"
+                };
+            }
+            var result = await _userManager.AddToRoleAsync(user, changeRoleDTO.Role);
+            if (result.Succeeded)
+                return true;
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Can't change role",
+                Detail = "Error occured while changing role"
+            };
+
+        }
+       }
+
+
     }
-        
 
-}
+
+
+
