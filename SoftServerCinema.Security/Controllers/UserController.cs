@@ -5,6 +5,9 @@ using SoftServerCinema.Security.Interfaces;
 using System.ComponentModel.DataAnnotations;
 using SoftServerCinema.Security.ErrorFilter;
 using System.Security.Claims;
+using Google.Apis.Auth;
+using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Authentication;
 
 namespace SoftServerCinema.Security.Controllers
 {
@@ -13,7 +16,7 @@ namespace SoftServerCinema.Security.Controllers
     
     public class UserController: ControllerBase
     {
-        private IUserService _userService;
+        private readonly IUserService _userService;
 
         public UserController(IUserService userService)
         {
@@ -70,7 +73,7 @@ namespace SoftServerCinema.Security.Controllers
                 throw new ValidationException("Failed model validation");
             var user = await _userService.Create(userRegisterDTO);
             if (user)
-                return Ok();
+                return Ok(userRegisterDTO);
             else
                 throw new ApiException()
                 {
@@ -79,23 +82,24 @@ namespace SoftServerCinema.Security.Controllers
                     Detail = "Error occured while creating user on server"
                 };
         }
-        [HttpPost("login")]
+        
         [AllowAnonymous]
+        [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] UserLoginDTO userLoginDTO)
         {
             if (!ModelState.IsValid)
                 throw new ValidationException("Failed model validation");
-               var token = await _userService.Login(userLoginDTO);
-            if (token == null)
+               var userWithTokens = await _userService.Login(userLoginDTO);
+            if (userWithTokens == null)
                 throw new ApiException()
                 {
                     StatusCode = StatusCodes.Status500InternalServerError,
                     Title = "Token generation failed",
                     Detail = "Error occured while generating tokens for user"
                 };
-            return Ok(token);
+            return Ok(userWithTokens);
         }
-
+        
 
         [AllowAnonymous]
         [HttpGet("{email}")]
@@ -120,12 +124,13 @@ namespace SoftServerCinema.Security.Controllers
             if (userId == null || code == null)
                 throw new ValidationException("Invalid userId or code");
             if (await _userService.VerifyEmail(userId, code))
-                return Redirect("http://localhost:7262/success");
+                return Redirect("https://localhost:7262/User/EmailConfirmed");
             else
-                return Redirect("http://localhost:7262/failure");
+                return Redirect("https://localhost:7262/User/EmailNotConfirmed");
         }
 
-        [HttpGet("refresh")]
+        [AllowAnonymous]
+        [HttpPost("refresh")]
         public async Task<IActionResult> Refresh([FromBody] TokenRequest tokenRequest)
         {
             if (!ModelState.IsValid)
@@ -150,7 +155,7 @@ namespace SoftServerCinema.Security.Controllers
                 throw new ApiException()
                 {
                     StatusCode = StatusCodes.Status404NotFound,
-                    Title = "Email is not used",
+                    Title = "User doesn't exist",
                     Detail = "Email is not used, user with this email doesn't exist"
                 };
            if(await _userService.SendResetCode(emailDTO.To))
@@ -176,13 +181,90 @@ namespace SoftServerCinema.Security.Controllers
                     Title = "Email is not used",
                     Detail = "Email is not used, user with this email doesn't exist"
                 };
-           if(await _userService.VerifyResetCode(resetCodeDTO.Email, resetCodeDTO.ResetToken, resetCodeDTO.NewPassword))
+           if(await _userService.VerifyResetCode(resetCodeDTO))
                 return Ok();
             throw new ApiException()
             {
                 StatusCode = StatusCodes.Status500InternalServerError,
                 Title = "Reset code verification failed",
                 Detail = "Error occured while verifying reset code"
+            };
+        }
+
+        [Authorize]
+        [HttpGet("logout")]
+        public async Task<IActionResult> UserLogOut()
+        {
+            var userId = HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId == null)
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Title = "Invalid guid",
+                    Detail = "Guid is empty"
+                };
+            if (await _userService.LogOut(userId))
+                    return Ok();
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Can't delete user",
+                Detail = "Error occured while deleting user from server"
+            };
+        }
+
+        [Authorize]
+        [HttpDelete]
+        public async Task<IActionResult> DeleteUser()
+        {
+            var userId = HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId == null)
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Title = "Invalid guid",
+                    Detail = "Guid is empty"
+                };
+            if (await _userService.Delete(userId))
+                return Ok();
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Can't delete user",
+                Detail = "Error occured while deleting user from server"
+            };
+        }
+
+        [AllowAnonymous]
+        [HttpPost("signin-google")]
+        public async Task<IActionResult> SignInGoogle(UserRegisterDTO userRegister)
+        {
+            if (!ModelState.IsValid)
+                throw new ValidationException("Failed model validation"); 
+            var token = await _userService.SignInGoogle(userRegister);
+            if (token != null)
+                return Ok(token);
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Google sign in failed",
+                Detail = "Error occured while signing in with google"
+            };
+        }
+
+        //[Authorize(Roles ="SuperAdmin")]
+        [HttpPost("change-role")]
+        public async Task<IActionResult> ChangeRole([FromBody] ChangeRoleDTO changeRoleDTO)
+        {
+            if (!ModelState.IsValid)
+                throw new ValidationException("Failed model validation");
+            if (await _userService.ChangeRole(changeRoleDTO))
+                return Ok();
+            throw new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Role change failed",
+                Detail = "Error occured while changing user role"
             };
         }
     }

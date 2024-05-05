@@ -19,8 +19,6 @@ namespace SoftServerCinema.Security.Validators
                  .NotEmpty().WithMessage("Last Name is required")
                  .NotNull().WithMessage("Last Name is required");
 
-
-
             RuleFor(u => u.Password)
                 .NotEmpty().WithMessage("Password is required")
                 .Length(8, 20).WithMessage("Password must be between 8 and 20 characters")
