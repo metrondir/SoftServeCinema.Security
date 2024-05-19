@@ -7,7 +7,7 @@ using MySql.EntityFrameworkCore.Metadata;
 namespace SoftServerCinema.Security.Migrations
 {
     /// <inheritdoc />
-    public partial class initialMigration : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

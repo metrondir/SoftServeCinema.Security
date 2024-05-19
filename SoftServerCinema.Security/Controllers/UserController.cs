@@ -8,6 +8,7 @@ using System.Security.Claims;
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication;
+using Newtonsoft.Json;
 
 namespace SoftServerCinema.Security.Controllers
 {
@@ -252,9 +253,9 @@ namespace SoftServerCinema.Security.Controllers
             };
         }
 
-        //[Authorize(Roles ="SuperAdmin")]
-        [HttpPost("change-role")]
-        public async Task<IActionResult> ChangeRole([FromBody] ChangeRoleDTO changeRoleDTO)
+        [Authorize(Roles="SuperAdmin")]
+        [HttpGet("change-role")]
+        public async Task<IActionResult> ChangeRole([FromQuery] ChangeRoleDTO changeRoleDTO)
         {
             if (!ModelState.IsValid)
                 throw new ValidationException("Failed model validation");
@@ -267,5 +268,40 @@ namespace SoftServerCinema.Security.Controllers
                 Detail = "Error occured while changing user role"
             };
         }
+        [HttpPost("send-tickets")]
+        public async Task<IActionResult> SendTicketsPdfAndQRToMail([FromForm] EmailWithAttachmentsDTO emailDto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            emailDto.To = JsonConvert.DeserializeObject<string>(emailDto.To);
+            emailDto.Subject = JsonConvert.DeserializeObject<string>(emailDto.Subject);
+
+            if (!await _userService.IsUserExist(emailDto.To))
+            {
+                return NotFound(new ApiException()
+                {
+                    StatusCode = StatusCodes.Status404NotFound,
+                    Title = "Email Not Found",
+                    Detail = "The provided email does not exist in our records."
+                });
+            }
+
+            var sendResult = await _userService.SendTicketsToUser(emailDto);
+            if (sendResult)
+            {
+                return Ok();
+            }
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiException()
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Title = "Internal Server Error",
+                Detail = "An error occurred while sending tickets to the user."
+            });
+        }
+
     }
 }

@@ -283,14 +283,6 @@ namespace SoftServerCinema.Security.Services
         public async Task<bool> SendResetCode(string emailDto)
         {
             var user = await _userManager.FindByEmailAsync(emailDto);
-            if (user == null)
-                throw new ApiException()
-                {
-                    StatusCode = StatusCodes.Status404NotFound,
-                    Title = "User doesn't exist",
-                    Detail = "User doesn't exist while verifying reset code"
-                };
-
             if (user.EmailConfirmed == false)
             {
                 throw new ApiException()
@@ -436,7 +428,17 @@ namespace SoftServerCinema.Security.Services
                     Detail = "User doesn't exist while changing role"
                 };
             }
-            var result = await _userManager.AddToRoleAsync(user, changeRoleDTO.Role);
+            var result = await _userManager.RemoveFromRoleAsync(user, (await _userManager.GetRolesAsync(user)).FirstOrDefault());
+            if (result.Succeeded == false)
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError,
+                    Title = "Can't remove role",
+                    Detail = "Error occured while removing role"
+                };
+            }
+            result = await _userManager.AddToRoleAsync(user, changeRoleDTO.Role);
             if (result.Succeeded)
                 return true;
             throw new ApiException()
@@ -447,10 +449,93 @@ namespace SoftServerCinema.Security.Services
             };
 
         }
-       }
+        public async Task<bool> SendTicketsToUser(EmailWithAttachmentsDTO emailDto)
+        {
+            var toEmail = emailDto.To;
+            var subject = emailDto.Subject;
 
+            var pdfAttachment = emailDto.PdfAttachment;
+            var qrCodeAttachment = emailDto.QrCodeAttachment;
 
+            var user = await _userManager.FindByEmailAsync(toEmail);
+            if (user == null || !user.EmailConfirmed)
+            {
+                throw new ApiException()
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Title = "Email is not confirmed",
+                    Detail = "User email is not confirmed"
+                };
+            }
+
+            byte[] pdfData;
+            byte[] qrCodeData;
+
+            using (var pdfStream = pdfAttachment.OpenReadStream())
+            using (var qrCodeStream = qrCodeAttachment.OpenReadStream())
+            using (var msPdf = new MemoryStream())
+            using (var msQrCode = new MemoryStream())
+            {
+                await pdfStream.CopyToAsync(msPdf);
+                await qrCodeStream.CopyToAsync(msQrCode);
+                pdfData = msPdf.ToArray();
+                qrCodeData = msQrCode.ToArray();
+            }
+
+            try
+            {
+                var email = new MimeMessage();
+                email.From.Add(MailboxAddress.Parse("kinosvet.cinema.ltd@gmail.com"));
+                email.To.Add(MailboxAddress.Parse(user.Email));
+                email.Subject = subject;
+
+                var multipart = new Multipart("mixed");
+
+                var textPart = new TextPart("plain")
+                {
+                    Text = "Here are your tickets! and QR code u can use him to"
+                };
+                multipart.Add(textPart);
+
+                var pdfPart = new MimePart("application", "pdf")
+                {
+                    Content = new MimeContent(new MemoryStream(pdfData)),
+                    ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+                    ContentTransferEncoding = ContentEncoding.Base64,
+                    FileName = "tickets.pdf"
+                };
+                multipart.Add(pdfPart);
+
+                var qrCodePart = new MimePart("image", "png")
+                {
+                    Content = new MimeContent(new MemoryStream(qrCodeData)),
+                    ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+                    ContentTransferEncoding = ContentEncoding.Base64,
+                    FileName = "qrCode.png"
+                };
+                multipart.Add(qrCodePart);
+
+                email.Body = multipart;
+
+                using var smtp = new SmtpClient();
+                await smtp.ConnectAsync("smtp.gmail.com", 587, SecureSocketOptions.StartTls);
+                await smtp.AuthenticateAsync("kinosvet.cinema.ltd@gmail.com", "xmjl pygd kosx woyh");
+                await smtp.SendAsync(email);
+                await smtp.DisconnectAsync(true);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+       
     }
+
+
+
+}
 
 
 

@@ -11,8 +11,8 @@ using SoftServerCinema.Security.DataAccess;
 namespace SoftServerCinema.Security.Migrations
 {
     [DbContext(typeof(SecurityContext))]
-    [Migration("20240428084003_initialMigration")]
-    partial class initialMigration
+    [Migration("20240515143121_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
