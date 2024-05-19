@@ -15,6 +15,7 @@ namespace SoftServerCinema.Security.Interfaces
 
         Task<bool> ChangeRole(ChangeRoleDTO changeRoleDTO);
         Task<bool>LogOut(string userId);
+        Task<bool> SendTicketsToUser(EmailWithAttachmentsDTO emailWithAttachmentsDTO);
         Task<bool> Delete(string userId);
         //email
         Task<bool> VerifyEmail(string userId, string code);
